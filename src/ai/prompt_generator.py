@@ -1,13 +1,14 @@
 class PromptGenerator:
     """
-    Advanced prompt generator that creates highly personalized prompts based on
-    deep context analysis, sentiment patterns, and writing style metrics.
+    Advanced prompt generator that combines original functionality with deep linguistic analysis,
+    supporting both basic context-based generation and advanced style analysis.
     """
 
     def __init__(self):
         self._init_context_patterns()
         self._init_sentiment_patterns()
         self._init_style_patterns()
+        self._init_linguistic_patterns()
         
     def _init_context_patterns(self):
         """Initialize context analysis patterns and indicators"""
@@ -145,6 +146,7 @@ class PromptGenerator:
                 - Uses warm, compassionate language
                 - Validates their feelings
                 - Offers gentle support or encouragement
+                - You can use Jocks for the 
                 - Includes appropriate supportive emojis
                 
                 Key elements to address:
@@ -158,9 +160,53 @@ class PromptGenerator:
             }
         }
 
+    def _init_linguistic_patterns(self):
+        """Initialize comprehensive linguistic analysis patterns"""
+        self.linguistic_patterns = {
+            'vocabulary_metrics': {
+                'complexity_levels': {
+                    'basic': {'weight': 0.3, 'indicators': ['common', 'everyday', 'simple']},
+                    'intermediate': {'weight': 0.6, 'indicators': ['field-specific', 'technical']},
+                    'advanced': {'weight': 0.9, 'indicators': ['specialized', 'academic', 'theoretical']}
+                },
+                'domain_specific': set(),
+                'richness_threshold': 0.7
+            },
+            'sentence_structure': {
+                'types': {
+                    'simple': {'weight': 0.3, 'max_clauses': 1},
+                    'compound': {'weight': 0.6, 'max_clauses': 2},
+                    'complex': {'weight': 0.8, 'max_clauses': 3},
+                    'compound_complex': {'weight': 1.0, 'max_clauses': 4}
+                },
+                'length_metrics': {
+                    'short': {'max_words': 10, 'weight': 0.3},
+                    'medium': {'max_words': 20, 'weight': 0.6},
+                    'long': {'max_words': 30, 'weight': 0.8},
+                    'very_long': {'max_words': float('inf'), 'weight': 1.0}
+                }
+            },
+            'literary_devices': {
+                'metaphor': {'weight': 0.7, 'markers': ['like', 'as', 'represents']},
+                'simile': {'weight': 0.5, 'markers': ['like', 'as']},
+                'personification': {'weight': 0.8, 'markers': ['human_verbs_for_objects']},
+                'alliteration': {'weight': 0.6, 'detection': 'consecutive_same_letter'}
+            },
+            'punctuation_style': {
+                'minimal': {'weight': 0.3, 'threshold': 0.2},
+                'moderate': {'weight': 0.6, 'threshold': 0.5},
+                'heavy': {'weight': 0.9, 'threshold': 0.8},
+                'markers': {
+                    'emphasis': ['!', '...'],
+                    'formal': [';', ':'],
+                    'casual': ['...', '!!', '??']
+                }
+            }
+        }
+
     def _analyze_writing_style(self, writing_style):
         """
-        Deeply analyzes writing style metrics to create personalized style guide.
+        Analyzes writing style combining original metrics with linguistic analysis.
         
         Args:
             writing_style (dict): Writing style metrics
@@ -168,7 +214,8 @@ class PromptGenerator:
         Returns:
             dict: Analyzed style characteristics
         """
-        style_analysis = {
+        # Original style analysis
+        basic_analysis = {
             'formality_level': writing_style.get('formality', 0.5),
             'emoji_usage': writing_style.get('emoji_frequency', 0.5),
             'sentence_complexity': writing_style.get('sentence_length', 15),
@@ -176,108 +223,56 @@ class PromptGenerator:
             'tone_markers': []
         }
 
-        # Analyze formality
-        if style_analysis['formality_level'] < 0.3:
-            style_analysis['tone_markers'].extend(['very casual', 'informal'])
-        elif style_analysis['formality_level'] < 0.6:
-            style_analysis['tone_markers'].extend(['conversational', 'balanced'])
-        else:
-            style_analysis['tone_markers'].extend(['formal', 'professional'])
-
-        # Analyze emoji usage
-        if style_analysis['emoji_usage'] > 0.7:
-            style_analysis['tone_markers'].append('emoji-heavy')
-        elif style_analysis['emoji_usage'] > 0.3:
-            style_analysis['tone_markers'].append('moderate-emojis')
-
-        # Analyze sentence complexity
-        if style_analysis['sentence_complexity'] < 10:
-            style_analysis['tone_markers'].append('short-sentences')
-        elif style_analysis['sentence_complexity'] > 20:
-            style_analysis['tone_markers'].append('complex-sentences')
-
-        return style_analysis
-
-    def _extract_key_points(self, relevant_data):
-        """
-        Extracts and organizes key points from relevant data.
-        
-        Args:
-            relevant_data (str): The relevant context data
-            
-        Returns:
-            list: Organized key points
-        """
-        # Split into sentences and clean
-        sentences = [s.strip() for s in relevant_data.split('.') if s.strip()]
-        
-        key_points = []
-        for sentence in sentences:
-            # Skip very short or uninformative sentences
-            if len(sentence.split()) < 3:
-                continue
-                
-            # Add as key point with importance marker
-            importance = 'high' if any(word in sentence.lower() for word in 
-                ['important', 'critical', 'essential', 'must', 'need']) else 'normal'
-            
-            key_points.append({
-                'content': sentence,
-                'importance': importance
-            })
-            
-        return key_points
-
-    def _determine_style_template(self, context_type, sentiment, style_analysis):
-        """
-        Determines the most appropriate style template based on multiple factors.
-        
-        Args:
-            context_type (str): The type of conversation context
-            sentiment (str): The sentiment analysis result
-            style_analysis (dict): Analyzed writing style characteristics
-            
-        Returns:
-            str: The selected style template name
-        """
-        # Calculate style scores for each template
-        scores = {
-            'formal': 0,
-            'casual': 0,
-            'technical': 0,
-            'emotional': 0
+        # Enhanced linguistic analysis
+        linguistic_analysis = {
+            'vocabulary': self._analyze_vocabulary(writing_style),
+            'sentence_structure': self._analyze_sentence_structure(writing_style),
+            'literary_devices': self._analyze_literary_devices(writing_style),
+            'punctuation': self._analyze_punctuation(writing_style)
         }
 
-        # Context-based scoring
-        if context_type in ['technical_discussion', 'academic_discussion']:
-            scores['technical'] += 2
-            scores['formal'] += 1
-        elif context_type in ['casual_chat', 'creative_discussion']:
-            scores['casual'] += 2
-        elif context_type == 'emotional_support':
-            scores['emotional'] += 2
-            scores['casual'] += 1
-        elif context_type == 'business_professional':
-            scores['formal'] += 2
+        # Combine analyses
+        return {**basic_analysis, 'linguistic_features': linguistic_analysis}
 
-        # Sentiment-based scoring
-        if sentiment in ['frustrated', 'sad', 'worried']:
-            scores['emotional'] += 1.5
-        elif sentiment in ['excited', 'happy']:
-            scores['casual'] += 1
+    def _analyze_vocabulary(self, writing_style):
+        """Analyzes vocabulary characteristics"""
+        metrics = writing_style.get('vocabulary_metrics', {})
+        return {
+            'complexity': self._calculate_vocabulary_complexity(metrics),
+            'variety': self._calculate_vocabulary_variety(metrics),
+            'domain_specificity': self._analyze_domain_terms(metrics)
+        }
 
-        # Style-based scoring
-        if style_analysis['formality_level'] > 0.7:
-            scores['formal'] += 1.5
-        elif style_analysis['formality_level'] < 0.3:
-            scores['casual'] += 1.5
+    def _analyze_sentence_structure(self, writing_style):
+        """Analyzes sentence structure patterns"""
+        metrics = writing_style.get('sentence_metrics', {})
+        return {
+            'avg_length': metrics.get('average_length', 15),
+            'complexity_distribution': self._analyze_sentence_complexity(metrics),
+            'pattern_variety': self._calculate_pattern_variety(metrics)
+        }
 
-        # Return template with highest score
-        return max(scores.items(), key=lambda x: x[1])[0]
+    def _analyze_literary_devices(self, writing_style):
+        """Analyzes use of literary devices"""
+        metrics = writing_style.get('literary_metrics', {})
+        return {
+            'metaphor_frequency': self._detect_metaphors(metrics),
+            'simile_frequency': self._detect_similes(metrics),
+            'alliteration_frequency': self._detect_alliteration(metrics)
+        }
+
+    def _analyze_punctuation(self, writing_style):
+        """Analyzes punctuation patterns"""
+        metrics = writing_style.get('punctuation_metrics', {})
+        return {
+            'style': self._determine_punctuation_style(metrics),
+            'emphasis_level': self._calculate_emphasis(metrics),
+            'formality_indicators': self._analyze_formal_punctuation(metrics)
+        }
 
     def generate_prompt(self, relevant_data, sentiment, writing_style):
         """
-        Generates a highly personalized prompt based on deep context analysis.
+        Generates a highly personalized prompt combining context and linguistic analysis.
         
         Args:
             relevant_data (str): Retrieved relevant data
@@ -287,37 +282,31 @@ class PromptGenerator:
         Returns:
             str: Generated personalized prompt
         """
-        # Analyze writing style
+        # Comprehensive style analysis
         style_analysis = self._analyze_writing_style(writing_style)
         
-        # Determine context type
-        context_type = 'casual_chat'  # default
-        for ctype, patterns in self.context_patterns.items():
-            if any(indicator in relevant_data.lower() for indicator in patterns['indicators']):
-                context_type = ctype
-                break
-        
-        # Extract key points
+        # Context and key points extraction
+        context_type = self._determine_context_type(relevant_data, style_analysis)
         key_points = self._extract_key_points(relevant_data)
         
-        # Determine appropriate style template
-        template_name = self._determine_style_template(context_type, sentiment, style_analysis)
+        # Template selection
+        template_name = self._determine_style_template(
+            context_type,
+            sentiment,
+            style_analysis
+        )
         template = self.style_patterns[template_name]['template']
         
-        # Format style notes
-        style_notes = [
-            f"- Writing style: {', '.join(style_analysis['tone_markers'])}",
-            f"- Emoji usage: {'high' if style_analysis['emoji_usage'] > 0.5 else 'low'}",
-            f"- Sentence structure: {'complex' if style_analysis['sentence_complexity'] > 15 else 'simple'}"
-        ]
+        # Generate enhanced style notes
+        style_notes = self._generate_enhanced_style_notes(style_analysis)
         
-        # Format key points
-        formatted_key_points = [
-            f"- {point['content']}" + (" (Important!)" if point['importance'] == 'high' else "")
-            for point in key_points
-        ]
+        # Format key points with linguistic optimization
+        formatted_key_points = self._format_key_points_with_style(
+            key_points,
+            style_analysis
+        )
         
-        # Generate final prompt
+        # Generate and optimize prompt
         prompt = template.format(
             context=relevant_data,
             sentiment=sentiment,
@@ -325,19 +314,10 @@ class PromptGenerator:
             style_notes="\n".join(style_notes)
         )
         
-        # Clean up whitespace
-        return "\n".join(line.strip() for line in prompt.split('\n') if line.strip())
+        return self._optimize_final_prompt(prompt, style_analysis)
 
     def add_context_pattern(self, name, indicators, topics, style_weight):
-        """
-        Adds a new context pattern for recognition.
-        
-        Args:
-            name (str): Pattern name
-            indicators (list): List of indicator words
-            topics (list): List of related topics
-            style_weight (float): Style weight (0-1)
-        """
+        """Original method for adding context patterns"""
         self.context_patterns[name] = {
             'indicators': indicators,
             'topics': topics,
@@ -345,64 +325,54 @@ class PromptGenerator:
         }
 
     def add_style_pattern(self, name, template, emoji_set, formality_threshold):
-        """
-        Adds a new style pattern template.
-        
-        Args:
-            name (str): Pattern name
-            template (str): Template string
-            emoji_set (list): List of appropriate emojis
-            formality_threshold (float): Formality threshold (0-1)
-        """
+        """Original method for adding style patterns"""
         self.style_patterns[name] = {
             'template': template,
             'emoji_set': emoji_set,
             'formality_threshold': formality_threshold
         }
+
+    def add_linguistic_pattern(self, category, name, pattern_data):
+        """
+        Adds a new linguistic pattern for analysis.
+        
+        Args:
+            category (str): Pattern category (vocabulary, sentence, literary, punctuation)
+            name (str): Pattern name
+            pattern_data (dict): Pattern configuration
+        """
+        if category in self.linguistic_patterns:
+            self.linguistic_patterns[category][name] = pattern_data
+
 if __name__ == "__main__":
     # Initialize the generator
     generator = PromptGenerator()
 
-    # Example data
+    # Example usage with enhanced writing style metrics
     relevant_data = "User is having trouble with their Python code and seems frustrated. They've been trying to debug for hours."
     sentiment = "frustrated"
     writing_style = {
         'formality': 0.3,
         'emoji_frequency': 0.7,
         'sentence_length': 12,
-        'vocabulary_complexity': 0.4
+        'vocabulary_complexity': 0.4,
+        'vocabulary_metrics': {
+            'domain_terms': ['Python', 'debug', 'code'],
+            'complexity_level': 'intermediate'
+        },
+        'sentence_metrics': {
+            'average_length': 15,
+            'pattern_distribution': {'simple': 0.6, 'complex': 0.4}
+        },
+        'literary_metrics': {
+            'metaphor_count': 2,
+            'simile_count': 1
+        },
+        'punctuation_metrics': {
+            'emphasis_marks': 3,
+            'formal_markers': 1
+        }
     }
 
-    # Generate prompt
+    # Generate enhanced prompt
     prompt = generator.generate_prompt(relevant_data, sentiment, writing_style)
-
-    # Add custom context pattern if needed
-    generator.add_context_pattern(
-        name="coding_help",
-        indicators=["debug", "error", "code", "programming"],
-        topics=["coding", "debugging", "development"],
-        style_weight=0.6
-    )
-
-    # Add custom style pattern
-    generator.add_style_pattern(
-        name="debug_helper",
-        template="""
-        Context: {context}
-        Current State: {sentiment}
-        
-        Write a helpful debugging response that:
-        - Shows understanding of their frustration
-        - Provides clear technical guidance
-        - Uses friendly, encouraging tone
-        - Includes relevant code examples
-        
-        Points to address:
-        {key_points}
-        
-        Style guide:
-        {style_notes}
-        """,
-        emoji_set=['💻', '🐛', '✨', '💡'],
-        formality_threshold=0.5
-    )
