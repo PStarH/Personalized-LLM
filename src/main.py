@@ -226,7 +226,7 @@ def main():
         do_augment=do_augment
     )
     chain_manager = AdvancedHumanChainManager(
-        model=fine_tuner.model,  # Pass the trained model directly
+        model=fine_tuner.model,  # Pass the fine-tuned model directly
         cache_dir="cache/chains",
         personality_type="balanced"
     )
@@ -318,8 +318,11 @@ def main():
             )
 
             # Step 8: Generate Final Response
-            response = fine_tuned_model.generate_response(thought_process)
-            print(f"Response for {file_path}:\n{response}\n")
+            try:
+                response = fine_tuned_model.generate_response(thought_process)
+                print(f"Response for {file_path}:\n{response}\n")
+            except Exception as e:
+                logging.error(f"Failed to generate response for {file_path}: {e}")
     else:
         logging.error("No training texts collected. Skipping fine-tuning.")
 

@@ -293,10 +293,8 @@ class EnhancedRetriever:
                     new_embedding = self.embedding_model.encode(new_content).astype('float32')
                     faiss.normalize_L2(new_embedding.reshape(1, -1))
                     self.embeddings[idx] = new_embedding
-                    self.index.reset()  # Reset and rebuild index
-                    faiss.normalize_L2(self.embeddings)
-                    self.index.train(self.embeddings)
-                    self.index.add(self.embeddings)
+                    # Update FAISS index incrementally
+                    self.index.replace_ids(np.array([idx]), np.array([new_embedding]))
                     logging.info(f"Updated content and embedding for passage ID {passage_id}.")
                     
                     # Update metadata in database

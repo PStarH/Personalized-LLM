@@ -265,6 +265,43 @@ class EnhancedFineTuner(FineTuner):
         except Exception as e:
             logging.error(f"Failed to load personality configuration: {e}")
 
+    def fine_tune(self, training_texts: List[str]) -> AutoModelForCausalLM:
+        """Fine-tunes the model with the provided training texts and returns the fine-tuned model."""
+        dataset = self.prepare_dataset(training_texts)
+        
+        training_args = TrainingArguments(
+            output_dir="./fine_tuned_model",
+            num_train_epochs=self.num_train_epochs,
+            per_device_train_batch_size=self.per_device_train_batch_size,
+            learning_rate=self.learning_rate,
+            logging_dir="./logs",
+            logging_steps=10,
+            save_steps=500,
+            evaluation_strategy="steps",
+            save_total_limit=2,
+            load_best_model_at_end=True,
+            metric_for_best_model="loss",
+            greater_is_better=False
+        )
+        
+        trainer = Trainer(
+            model=self.model,
+            args=training_args,
+            train_dataset=dataset,
+            data_collator=DataCollatorForLanguageModeling(tokenizer=self.tokenizer, mlm=False),
+            callbacks=[EarlyStoppingCallback(early_stopping_patience=2)]
+        )
+        
+        trainer.train()
+        
+        # Save the fine-tuned model
+        trainer.save_model(self.output_dir)
+        self.tokenizer.save_pretrained(self.output_dir)
+        
+        logging.info("Fine-tuning completed and model saved.")
+        
+        return self.model  # Return the fine-tuned model
+
 if __name__ == "__main__":
     personality = PersonalityConfig(
     formality=0.3,      # More casual
@@ -286,8 +323,19 @@ if __name__ == "__main__":
     ]
 
     # Fine-tune with your training texts
-    tuner.fine_tune(training_texts)
+    try:
+        fine_tuned_model = tuner.fine_tune(training_texts)  # Capture the returned model
+        logging.info("Fine-tuning successful.")
+    except Exception as e:
+        logging.error(f"Fine-tuning failed: {e}")
+        exit(1)
 
     # Generate a response
-    response = tuner.generate_response("How are you today?")
-    print(response)
+    if fine_tuned_model:
+        try:
+            response = fine_tuned_model.generate_response("How are you today?")
+            print(response)
+        except Exception as e:
+            logging.error(f"Failed to generate response: {e}")
+    else:
+        logging.error("Fine-tuned model is not available.")
