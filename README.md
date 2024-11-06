@@ -1,6 +1,6 @@
 # Personalized-LLM
 
-*Making LLM results more accurate through enhanced data retrieval, contextual understanding, and personalized responses.*
+*Making a cyber-replication for you. Create a AI with your knowledge, your style of speaking*
 
 ## Table of Contents
 - [Introduction](#introduction)
