@@ -134,6 +134,25 @@ class HistoryEmbedder:
                 logging.error(f"Failed to embed thought: {e}")
                 return False
 
+    def add_thought(
+        self,
+        thought_content: str,
+        tags: List[str] = None,
+        metadata: Dict[str, Any] = None
+    ) -> bool:
+        """
+        Public method to add a thought to the history.
+
+        Args:
+            thought_content (str): The thought content to add
+            tags (List[str]): Optional list of tags for categorization
+            metadata (Dict[str, Any]): Optional metadata for the thought
+
+        Returns:
+            bool: Success status of the operation
+        """
+        return self.embed(thought_content, tags, metadata)
+
     def search_by_similarity(
         self,
         query: str,
@@ -151,65 +170,80 @@ class HistoryEmbedder:
             tags (List[str]): Optional tags to filter results
 
         Returns:
-            List[Tuple[Thought, float]]: Thoughts and their similarity scores
+            List[Tuple[Thought, float]]: List of tuples containing Thoughts and their similarity scores
         """
+        if not query.strip():
+            logging.warning("Empty query provided for similarity search")
+            return []
+
         with self.lock:
-            if not self.thoughts:
+            try:
+                # Generate embedding for the query
+                query_embedding = self.model.encode(query).tolist()
+
+                # Calculate similarities
+                similarities = []
+                for thought in self.thoughts:
+                    if tags and not set(tags).issubset(set(thought.tags)):
+                        continue
+                    similarity = self._cosine_similarity(query_embedding, thought.embedding)
+                    if similarity >= min_similarity:
+                        similarities.append((thought, similarity))
+
+                # Sort by similarity descending
+                similarities.sort(key=lambda x: x[1], reverse=True)
+
+                # Return top_k results
+                top_results = similarities[:top_k]
+                logging.info(f"Found {len(top_results)} similar thoughts for the query")
+                return top_results
+
+            except Exception as e:
+                logging.error(f"Failed during similarity search: {e}")
                 return []
 
-            # Generate query embedding
-            query_embedding = self.model.encode(query)
-            
-            # Filter thoughts by tags if specified
-            candidate_thoughts = self.thoughts
-            if tags:
-                tagged_indices = set.intersection(
-                    *[set(self.tags_index[tag]) for tag in tags]
-                )
-                candidate_thoughts = [self.thoughts[i] for i in tagged_indices]
-            
-            # Calculate similarities and filter
-            results = []
-            for thought in candidate_thoughts:
-                similarity = self._cosine_similarity(
-                    query_embedding,
-                    np.array(thought.embedding)
-                )
-                if similarity >= min_similarity:
-                    results.append((thought, similarity))
-            
-            # Sort and return top results
-            results.sort(key=lambda x: x[1], reverse=True)
-            return results[:top_k]
-
-    def get_thoughts_by_tags(self, tags: List[str], require_all: bool = True) -> List[Thought]:
+    def get_thoughts_by_tags(self, tags: List[str]) -> List[Thought]:
         """
-        Retrieve thoughts that match specified tags.
+        Retrieve thoughts that contain all specified tags.
 
         Args:
-            tags (List[str]): Tags to filter by
-            require_all (bool): If True, thoughts must have all tags
+            tags (List[str]): List of tags to filter thoughts
 
         Returns:
-            List[Thought]: Matching thoughts
+            List[Thought]: List of thoughts matching all tags
         """
+        if not tags:
+            logging.warning("No tags provided for retrieval")
+            return []
+
         with self.lock:
-            if not tags:
-                return self.thoughts.copy()
-            
-            if require_all:
-                indices = set.intersection(*[set(self.tags_index[tag]) for tag in tags])
-            else:
-                indices = set.union(*[set(self.tags_index[tag]) for tag in tags])
-            
-            return [self.thoughts[i] for i in sorted(indices)]
+            try:
+                indices = set(range(len(self.thoughts)))
+                for tag in tags:
+                    indices &= set(self.tags_index.get(tag, []))
+                    if not indices:
+                        break
+                retrieved_thoughts = [self.thoughts[i] for i in indices]
+                logging.info(f"Retrieved {len(retrieved_thoughts)} thoughts with tags {tags}")
+                return retrieved_thoughts
+            except Exception as e:
+                logging.error(f"Failed to retrieve thoughts by tags: {e}")
+                return []
+
+    def _cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
+        """Calculate cosine similarity between two vectors."""
+        dot_product = np.dot(vec1, vec2)
+        norm_a = np.linalg.norm(vec1)
+        norm_b = np.linalg.norm(vec2)
+        return float(dot_product / (norm_a * norm_b)) if norm_a and norm_b else 0.0
 
     def _update_indices(self, thought: Thought, remove: bool = False):
         """Update tag indices when adding or removing thoughts."""
         thought_index = len(self.thoughts) - 1
         for tag in thought.tags:
             if remove:
-                self.tags_index[tag].remove(thought_index)
+                if thought_index in self.tags_index[tag]:
+                    self.tags_index[tag].remove(thought_index)
                 if not self.tags_index[tag]:
                     del self.tags_index[tag]
             else:
@@ -277,7 +311,7 @@ class HistoryEmbedder:
 
         Returns:
             Dict[str, Any]: Analysis results including tag frequencies,
-                           temporal patterns, etc.
+                            temporal patterns, etc.
         """
         with self.lock:
             analysis = {
@@ -291,12 +325,12 @@ class HistoryEmbedder:
                 'average_thought_length': sum(len(t.content) for t in self.thoughts) / len(self.thoughts) if self.thoughts else 0,
                 'thoughts_per_day': defaultdict(int)
             }
-            
+
             # Analyze temporal patterns
             for thought in self.thoughts:
                 day = thought.timestamp.split('T')[0]
                 analysis['thoughts_per_day'][day] += 1
-            
+
             return analysis
 
     @property
@@ -325,7 +359,7 @@ if __name__ == "__main__":
     )
 
     # Add a thought with tags and metadata
-    embedder.embed(
+    embedder.add_thought(
         "This is an important thought about AI",
         tags=["AI", "important"],
         metadata={"priority": "high", "project": "AI Research"}

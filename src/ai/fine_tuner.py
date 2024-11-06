@@ -1,7 +1,8 @@
 import os
-from typing import Optional, List, Dict, Union
+from typing import Optional, List, Dict, Union, Type
 from transformers import (
     AutoModelForCausalLM,
+    AutoModel,
     AutoTokenizer,
     Trainer,
     TrainingArguments,
@@ -118,13 +119,40 @@ class EnhancedFineTuner(FineTuner):
     def __init__(
         self,
         model_name: str,
+        model_type: Optional[str] = None,
         personality_config: Optional[PersonalityConfig] = None,
+        tokenizer_name: Optional[str] = None,
         **kwargs
     ):
+        """
+        Initializes the EnhancedFineTuner.
+        
+        Args:
+            model_name (str): Name of the pre-trained model to fine-tune.
+            model_type (Optional[str]): Specific type of the model if auto-detection fails.
+            personality_config (Optional[PersonalityConfig]): Configuration for personality traits.
+            tokenizer_name (Optional[str]): Name of the tokenizer to use. Defaults to model_name.
+            **kwargs: Additional keyword arguments for FineTuner.
+        """
         super().__init__(model_name, **kwargs)
         self.personality = personality_config or PersonalityConfig()
         self.text_processor = TextProcessor()
         self.dialogue_context = DialogueContext()
+        
+        # Dynamically load the model and tokenizer
+        self.model_type = model_type
+        self.tokenizer_name = tokenizer_name or model_name
+        
+        try:
+            if self.model_type:
+                self.model = AutoModel.from_pretrained(self.model_name)
+            else:
+                self.model = AutoModelForCausalLM.from_pretrained(self.model_name)
+            self.tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_name)
+            logging.info(f"Loaded model '{self.model_name}' and tokenizer '{self.tokenizer_name}'.")
+        except Exception as e:
+            logging.error(f"Error loading model or tokenizer: {e}")
+            raise e
         
     def prepare_training_sample(self, text: str, include_context: bool = True) -> str:
         """Prepares a single training sample with context and personality."""
@@ -165,7 +193,12 @@ class EnhancedFineTuner(FineTuner):
                     text,
                     include_context=random.choice([True, False])
                 )
+                # Update personality for augmentation
+                original_personality = self.personality
+                self.personality = varied_personality
                 processed_texts.append(varied_text)
+                # Restore original personality
+                self.personality = original_personality
         
         return super().prepare_dataset(processed_texts)
     
@@ -186,17 +219,20 @@ class EnhancedFineTuner(FineTuner):
             prompt = f"{context_prompt}\nHuman: {prompt}\nAI:"
         
         # Generate base response
-        inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True)
-        outputs = self.fine_tuned_model.generate(
-            inputs["input_ids"],
-            max_length=max_length,
-            temperature=temperature,
-            top_p=top_p,
-            do_sample=True,
-            pad_token_id=self.tokenizer.pad_token_id
-        )
-        
-        response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        try:
+            inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True)
+            outputs = self.model.generate(
+                inputs["input_ids"],
+                max_length=max_length,
+                temperature=temperature,
+                top_p=top_p,
+                do_sample=True,
+                pad_token_id=self.tokenizer.pad_token_id
+            )
+            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        except Exception as e:
+            logging.error(f"Error during generation: {e}")
+            response = "I'm sorry, I couldn't generate a response at this time."
         
         # Process response to match personality and add natural elements
         processed_response = self.text_processor.add_natural_elements(
@@ -212,14 +248,22 @@ class EnhancedFineTuner(FineTuner):
 
     def save_personality(self, filepath: str):
         """Saves the current personality configuration."""
-        with open(filepath, 'w') as f:
-            json.dump(vars(self.personality), f)
+        try:
+            with open(filepath, 'w') as f:
+                json.dump(vars(self.personality), f)
+            logging.info(f"Personality configuration saved to {filepath}.")
+        except Exception as e:
+            logging.error(f"Failed to save personality configuration: {e}")
     
     def load_personality(self, filepath: str):
         """Loads a personality configuration."""
-        with open(filepath, 'r') as f:
-            personality_dict = json.load(f)
-            self.personality = PersonalityConfig(**personality_dict)
+        try:
+            with open(filepath, 'r') as f:
+                personality_dict = json.load(f)
+                self.personality = PersonalityConfig(**personality_dict)
+            logging.info(f"Personality configuration loaded from {filepath}.")
+        except Exception as e:
+            logging.error(f"Failed to load personality configuration: {e}")
 
 if __name__ == "__main__":
     personality = PersonalityConfig(
@@ -231,12 +275,19 @@ if __name__ == "__main__":
     )
 
     tuner = EnhancedFineTuner(
-        model_name="your-base-model",
+        model_name="gpt2",
         personality_config=personality
     )
+
+    # Example training texts
+    training_texts = [
+        "Hello! How can I assist you today?",
+        "I'm here to help with any questions you might have."
+    ]
 
     # Fine-tune with your training texts
     tuner.fine_tune(training_texts)
 
     # Generate a response
     response = tuner.generate_response("How are you today?")
+    print(response)
