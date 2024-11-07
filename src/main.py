@@ -3,6 +3,10 @@ import argparse
 import logging
 from ai.prompt_generator import PromptGenerator
 from ai.fine_tuner import EnhancedFineTuner, PersonalityConfig
+from ai.llm_providers import (
+    LLMProvider,
+    LLMProviderRegistry
+)
 from crawler.web_crawler import WebCrawler
 from nlp.sentiment_analysis import EnhancedSentimentAnalyzer
 from nlp.writing_style import WritingStyleAnalyzer
@@ -12,6 +16,8 @@ from cot.chain_manager import AdvancedHumanChainManager
 from utils.file_reader import FileReader
 import json
 from datetime import datetime
+import importlib.util
+from typing import Type
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Personalized-LLM Main Application")
@@ -89,6 +95,54 @@ def parse_arguments():
         type=str,
         help='Path to a JSON file containing personality configuration.'
     )
+    parser.add_argument(
+        '--llm_provider',
+        type=str,
+        default='openai',
+        choices=LLMProviderRegistry.list_providers(),
+        help='LLM provider to use (e.g., ollama, openai, anthropic, google, custom).'
+    )
+    parser.add_argument(
+        '--provider_module',
+        type=str,
+        default=None,
+        help='Path to the custom provider module (if using a custom provider).'
+    )
+    parser.add_argument(
+        '--provider_class',
+        type=str,
+        default=None,
+        help='Name of the custom provider class in the module.'
+    )
+    parser.add_argument(
+        '--api_key',
+        type=str,
+        default=None,
+        help='API key for the selected LLM provider, if required.'
+    )
+    parser.add_argument(
+        '--credentials_path',
+        type=str,
+        default=None,
+        help='Path to Google Cloud credentials JSON file (if using Google provider).'
+    )
+    parser.add_argument(
+        '--model_provider',
+        type=str,
+        default=None,
+        help='Model provider name for LangChain integrations (e.g., huggingface, cohere).'
+    )
+    parser.add_argument(
+        '--model_kwargs',
+        type=str,
+        default=None,
+        help='JSON string of additional keyword arguments for the model provider.'
+    )
+    parser.add_argument(
+        '--enable_embedding',
+        action='store_true',
+        help='Enable text embedding functionality.'
+    )
     return parser.parse_args()
 
 def setup_logging(verbose: bool):
@@ -151,6 +205,98 @@ def aggregate_writing_styles(writing_style_contents):
 
     return aggregated_metrics
 
+def load_custom_provider(module_path: str, class_name: str) -> Type[LLMProvider]:
+    """
+    Dynamically loads a custom LLM provider from the specified module.
+
+    Args:
+        module_path (str): File path to the custom provider module.
+        class_name (str): Name of the provider class within the module.
+
+    Returns:
+        Type[LLMProvider]: The loaded provider class.
+
+    Raises:
+        Exception: If the module or class cannot be loaded.
+    """
+    try:
+        spec = importlib.util.spec_from_file_location("custom_provider", module_path)
+        custom_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(custom_module)
+        provider_class = getattr(custom_module, class_name)
+        if not issubclass(provider_class, LLMProvider):
+            raise TypeError(f"{class_name} does not inherit from LLMProvider.")
+        # Register the custom provider
+        LLMProviderRegistry.register_provider('custom', provider_class)
+        logging.info(f"Custom provider '{class_name}' loaded and registered successfully.")
+        return provider_class
+    except Exception as e:
+        logging.error(f"Failed to load custom provider: {e}")
+        raise
+
+def get_llm_provider(provider_name: str, api_key: str = None, credentials_path: str = None, provider_module: str = None, provider_class: str = None, **kwargs) -> LLMProvider:
+    """
+    Factory method to get the appropriate LLM provider instance.
+
+    Args:
+        provider_name (str): Name of the LLM provider.
+        api_key (str, optional): API key for the provider if required.
+        credentials_path (str, optional): Path to Google Cloud credentials (if Google provider).
+        provider_module (str, optional): Path to the custom provider module.
+        provider_class (str, optional): Name of the custom provider class.
+        **kwargs: Additional keyword arguments for the provider.
+
+    Returns:
+        LLMProvider: An instance of a subclass of LLMProvider.
+    """
+    if provider_name == 'custom':
+        if not provider_module or not provider_class:
+            logging.error("Both --provider_module and --provider_class must be specified for custom providers.")
+            exit(1)
+        load_custom_provider(provider_module, provider_class)
+
+    provider_cls = LLMProviderRegistry.get_provider(provider_name)
+
+    try:
+        if provider_name == 'ollama':
+            return provider_cls(model=kwargs.get('model', 'default'), api_url=kwargs.get('api_url', 'http://localhost:11434'))
+        elif provider_name == 'openai':
+            if not api_key:
+                logging.error("API key is required for OpenAI provider.")
+                exit(1)
+            return provider_cls(api_key=api_key, model=kwargs.get('model', 'text-davinci-003'))
+        elif provider_name == 'anthropic':
+            if not api_key:
+                logging.error("API key is required for Anthropic provider.")
+                exit(1)
+            return provider_cls(api_key=api_key, model=kwargs.get('model', 'claude-v1.3'))
+        elif provider_name == 'google':
+            if not credentials_path:
+                logging.error("Credentials path is required for Google provider.")
+                exit(1)
+            return provider_cls(credentials_path=credentials_path, model=kwargs.get('model', 'text-bison-001'))
+        elif provider_name == 'custom':
+            # Assuming custom provider may require additional kwargs
+            return provider_cls(**kwargs)
+        else:
+            # For any other providers, assume they require api_key
+            if issubclass(provider_cls, LLMProvider):
+                try:
+                    # Check if the provider's constructor accepts api_key
+                    if 'api_key' in provider_cls.__init__.__code__.co_varnames:
+                        return provider_cls(api_key=api_key)
+                    else:
+                        return provider_cls()
+                except TypeError as e:
+                    logging.error(f"Error initializing provider '{provider_name}': {e}")
+                    exit(1)
+            else:
+                logging.error(f"Provider '{provider_name}' is not a valid LLMProvider subclass.")
+                exit(1)
+    except Exception as e:
+        logging.error(f"Failed to initialize provider '{provider_name}': {e}")
+        exit(1)
+
 def main():
     # Parse command-line arguments
     args = parse_arguments()
@@ -166,6 +312,24 @@ def main():
     max_eval_samples = args.max_eval_samples
     do_clean = not args.no_clean
     do_augment = args.augment
+    llm_provider_name = args.llm_provider
+    api_key = args.api_key
+    provider_module = args.provider_module
+    provider_class = args.provider_class
+    credentials_path = args.credentials_path
+    model_kwargs = json.loads(args.model_kwargs) if args.model_kwargs else {}
+    enable_embedding = args.enable_embedding
+
+    # Initialize LLM Provider
+    llm_provider = get_llm_provider(
+        provider_name=llm_provider_name, 
+        api_key=api_key, 
+        credentials_path=credentials_path,
+        provider_module=provider_module, 
+        provider_class=provider_class,
+        model=model_name,
+        **model_kwargs
+    )
 
     # Load personality configuration if provided
     if args.personalize:
@@ -231,6 +395,18 @@ def main():
         personality_type="balanced"
     )
 
+    # Initialize Embedding Provider if enabled
+    if enable_embedding:
+        try:
+            embedding = llm_provider.embed_text("Initialize Embedding")
+            if embedding is not None:
+                logging.info("Embedding functionality is enabled and working.")
+            else:
+                logging.warning("Embedding functionality is enabled but failed to initialize.")
+        except Exception as e:
+            logging.error(f"Embedding initialization failed: {e}")
+            exit(1)
+
     # Collect training data from user files
     training_texts = []
     for directory in user_directories:
@@ -275,54 +451,73 @@ def main():
             exit(1)
 
         # Generate responses using the fine-tuned model
-        for file_path in user_files:
-            content = FileReader.read_file(file_path)
-            if not content:
-                logging.warning(f"Skipping file due to read error: {file_path}")
-                continue
+        for directory in user_directories:
+            user_files = [
+                os.path.join(directory, f)
+                for f in os.listdir(directory)
+                if os.path.isfile(os.path.join(directory, f)) and
+                   os.path.splitext(f)[1].lower() in FileReader.SUPPORTED_EXTENSIONS
+            ]
 
-            # Step 2: Sentiment Analysis
-            sentiment_result = sentiment_analyzer.analyze_sentiment(content, include_aspects=True)
-            if sentiment_result:
-                sentiment = sentiment_result.sentiment
-                logging.info(f"Sentiment for {file_path}: {sentiment}")
-            else:
-                sentiment = "Neutral"
-                logging.info(f"Sentiment analysis failed for {file_path}. Defaulting to Neutral.")
+            for file_path in user_files:
+                content = FileReader.read_file(file_path)
+                if not content:
+                    logging.warning(f"Skipping file due to read error: {file_path}")
+                    continue
 
-            # Step 3: Web Crawling for RAG
-            crawled_data = crawler.retrieve_data(query=content)
+                # Step 2: Sentiment Analysis
+                sentiment_result = sentiment_analyzer.analyze_sentiment(content, include_aspects=True)
+                if sentiment_result:
+                    sentiment = sentiment_result.sentiment
+                    logging.info(f"Sentiment for {file_path}: {sentiment}")
+                else:
+                    sentiment = "Neutral"
+                    logging.info(f"Sentiment analysis failed for {file_path}. Defaulting to Neutral.")
 
-            # Step 4: Retrieval-Augmented Generation
-            relevant_data = retriever.retrieve(crawled_data, query=content)
+                # Step 3: Web Crawling for RAG
+                crawled_data = crawler.retrieve_data(query=content)
 
-            # Step 5: Prompt Generation with Aggregated Writing Style
-            prompt = prompt_generator.generate_prompt(relevant_data, sentiment, aggregated_writing_style)
+                # Step 4: Retrieval-Augmented Generation
+                relevant_data = retriever.retrieve(crawled_data, query=content)
 
-            # Step 6: Chain of Thought Management
-            recognized_history = [{"text": t.content} for t in history_embedder.thoughts]
-            thought_process = chain_manager.generate_thought(prompt, recognized_history)
+                # Step 5: Prompt Generation with Aggregated Writing Style
+                prompt = prompt_generator.generate_prompt(relevant_data, sentiment, aggregated_writing_style)
 
-            # Update history with the new thought
-            history_embedder.add_thought(
-                thought_content=thought_process,
-                tags=["chain_of_thought"],
-                metadata={"source": "ChainManager"}
-            )
+                # Step 6: Chain of Thought Management
+                recognized_history = [{"text": t.content} for t in history_embedder.thoughts]
+                thought_process = chain_manager.generate_thought(prompt, recognized_history)
 
-            # Step 7: History Embedding
-            history_embedder.embed(
-                thought_content=thought_process,
-                tags=["generated_thought"],
-                metadata={"timestamp": datetime.now().isoformat()}
-            )
+                # Update history with the new thought
+                history_embedder.add_thought(
+                    thought_content=thought_process,
+                    tags=["chain_of_thought"],
+                    metadata={"source": "ChainManager"}
+                )
 
-            # Step 8: Generate Final Response
-            try:
-                response = fine_tuned_model.generate_response(thought_process)
-                print(f"Response for {file_path}:\n{response}\n")
-            except Exception as e:
-                logging.error(f"Failed to generate response for {file_path}: {e}")
+                # Step 7: History Embedding
+                if enable_embedding:
+                    embedding = llm_provider.embed_text(thought_process)
+                    if embedding:
+                        history_embedder.embed(
+                            thought_content=thought_process,
+                            tags=["generated_thought_embedding"],
+                            metadata={"timestamp": datetime.now().isoformat(), "embedding": embedding}
+                        )
+                    else:
+                        logging.warning(f"Failed to embed thought for {file_path}. Skipping embedding step.")
+                else:
+                    history_embedder.embed(
+                        thought_content=thought_process,
+                        tags=["generated_thought"],
+                        metadata={"timestamp": datetime.now().isoformat()}
+                    )
+
+                # Step 8: Generate Final Response
+                try:
+                    response = llm_provider.generate_response(thought_process)
+                    print(f"Response for {file_path}:\n{response}\n")
+                except Exception as e:
+                    logging.error(f"Failed to generate response for {file_path}: {e}")
     else:
         logging.error("No training texts collected. Skipping fine-tuning.")
 
